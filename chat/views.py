@@ -22,7 +22,7 @@ def chat_api(request):
 
             # Ollama를 통해 백그라운드에 떠 있는 모델 호출 (모델명을 꼭 확인해 주세요!)
             response = ollama.chat(
-                model='gemma', 
+                model='gemma4:e4b', 
                 messages=[{'role': 'user', 'content': user_prompt}]
             )
 

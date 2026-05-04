@@ -15,8 +15,10 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import path, include  # include 함수를 반드시 import 해야 합니다.
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # 메인 경로 접속 시, 'chat' 앱 내부의 urls.py로 URL 처리를 위임합니다.
+    path('', include('chat.urls')), 
 ]
