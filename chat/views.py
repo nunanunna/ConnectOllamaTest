@@ -116,7 +116,7 @@ def summarize_bill_api(request):
                     'top_p': 0.5
                 }
             )
-
+#
             summary = response['message']['content']
             return JsonResponse({'summary': summary}, status=200)
 
