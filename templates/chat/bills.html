@@ -6,7 +6,7 @@
     <title>최신 법률발의안 및 AI 3줄 요약</title>
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; }
-        .container { max-width: 800px; margin: auto; }
+        .container { max-width: 800px; margin: auto; padding-bottom: 50px; }
         h1 { text-align: center; color: #333; }
         
         .bill-card { 
@@ -18,63 +18,114 @@
         .bill-title { font-size: 1.2em; font-weight: bold; color: #2c3e50; margin-bottom: 10px; }
         .bill-info { font-size: 0.9em; color: #7f8c8d; }
         
-        /* 세부 정보 및 요약 영역 (초기에는 숨김) */
-        .bill-detail { 
-            display: none; margin-top: 15px; padding-top: 15px; 
-            border-top: 1px dashed #ccc; 
-        }
-        .summary-box { 
-            background: #e8f4f8; padding: 15px; border-radius: 5px; 
-            margin-top: 10px; font-weight: bold; color: #0056b3; line-height: 1.6;
-        }
-        .loading { color: #e67e22; font-weight: bold; }
+        /* 세부 정보 및 요약 영역 */
+        .bill-detail { display: none; margin-top: 15px; padding-top: 15px; border-top: 1px dashed #ccc; }
+        .summary-box { background: #e8f4f8; padding: 15px; border-radius: 5px; margin-top: 10px; color: #0056b3; line-height: 1.6; }
         .detail-link { display: inline-block; margin-top: 10px; color: #3498db; text-decoration: none; font-size: 0.9em; }
         .detail-link:hover { text-decoration: underline; }
+
+        /* 🔥 추가된 부분: 로딩 스피너 애니메이션 CSS */
+        .loading-container { display: flex; align-items: center; font-weight: bold; color: #e67e22; }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            border-left-color: #3498db;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        /* 하단 무한스크롤 로딩 표시 */
+        #bottom-loader { text-align: center; padding: 20px; display: none; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>🏛️ 국회 최신 법률발의안 AI 요약</h1>
+    
     <div id="bill-list">
-        <p style="text-align:center;">법률안 데이터를 불러오는 중입니다...</p>
+        <!-- 법안 카드들이 여기에 추가됩니다 -->
+    </div>
+    
+    <!-- 무한 스크롤 시 바닥에 나타나는 로딩 -->
+    <div id="bottom-loader">
+        <div class="loading-container" style="justify-content: center;">
+            <div class="spinner"></div>
+            <span>다음 법률안을 불러오는 중입니다...</span>
+        </div>
     </div>
 </div>
 
 <script>
+    let currentPage = 1;
+    let isLoading = false;
+    let hasMoreBills = true;
+
     document.addEventListener("DOMContentLoaded", function() {
-        // 1. 페이지 로드 시 법안 목록 가져오기
-        fetch('/api/bills/')
+        // 첫 페이지 로드
+        loadBills(currentPage);
+
+        // 🔥 추가된 부분: 무한 스크롤 이벤트 리스너
+        window.addEventListener('scroll', () => {
+            // 문서 전체 높이와 현재 스크롤 위치를 비교하여 바닥에 근접했는지 확인
+            if ((window.innerHeight + window.scrollY) >= document.body.offsetHeight - 200) {
+                if (!isLoading && hasMoreBills) {
+                    currentPage++;
+                    loadBills(currentPage);
+                }
+            }
+        });
+    });
+
+    function loadBills(page) {
+        isLoading = true;
+        const bottomLoader = document.getElementById('bottom-loader');
+        const billListDiv = document.getElementById('bill-list');
+        
+        if (page > 1) bottomLoader.style.display = 'block';
+
+        fetch(`/api/bills/?page=${page}`)
             .then(response => response.json())
             .then(data => {
-                const billListDiv = document.getElementById('bill-list');
-                billListDiv.innerHTML = ''; // 로딩 메시지 제거
+                bottomLoader.style.display = 'none';
 
                 if (data.error) {
-                    billListDiv.innerHTML = `<p style="color:red;">에러: ${data.error}</p>`;
+                    billListDiv.innerHTML += `<p style="color:red; text-align:center;">에러: ${data.error}</p>`;
+                    hasMoreBills = false;
                     return;
                 }
 
-                data.bills.forEach((bill, index) => {
-                    // 각 법안 카드 HTML 생성
+                if (!data.bills || data.bills.length === 0) {
+                    if (page === 1) {
+                        billListDiv.innerHTML = `<p style="text-align:center;">불러올 데이터가 없습니다.</p>`;
+                    }
+                    hasMoreBills = false;
+                    return;
+                }
+
+                data.bills.forEach((bill) => {
+                    // 각 법안 카드 고유 ID 생성
+                    const uniqueId = bill.id + '_' + Math.random().toString(36).substr(2, 9);
                     const card = document.createElement('div');
                     card.className = 'bill-card';
                     card.innerHTML = `
                         <div class="bill-title">${bill.title}</div>
                         <div class="bill-info">발의자: ${bill.proposer} | 발의일: ${bill.date}</div>
                         
-                        <div class="bill-detail" id="detail-${index}">
-                            <div class="summary-box" id="summary-${index}">
-                                <span class="loading">🤖 로컬 LLM(gemma4:e4b)이 법안을 3줄로 요약하고 있습니다... 잠시만 기다려주세요!</span>
+                        <div class="bill-detail" id="detail-${uniqueId}">
+                            <div class="summary-box" id="summary-${uniqueId}">
+                                <!-- 초기 상태는 비어있음 -->
                             </div>
                             <a href="${bill.detail_link}" target="_blank" class="detail-link">🔗 국회 의안정보시스템에서 원문 보기</a>
                         </div>
                     `;
 
-                    // 2. 카드 클릭 이벤트 (세부 정보 열기 및 AI 요약 요청)
+                    // 카드 클릭 이벤트 (세부 정보 열기 및 요약 요청)
                     card.addEventListener('click', function() {
-                        const detailDiv = document.getElementById(`detail-${index}`);
-                        const summaryBox = document.getElementById(`summary-${index}`);
+                        const detailDiv = document.getElementById(`detail-${uniqueId}`);
+                        const summaryBox = document.getElementById(`summary-${uniqueId}`);
                         
                         // 이미 열려있으면 닫기
                         if (detailDiv.style.display === 'block') {
@@ -82,23 +133,32 @@
                             return;
                         }
 
-                        // 창 열기
                         detailDiv.style.display = 'block';
 
-                        // 이미 요약이 완료된 상태면 다시 요청하지 않음
-                        if (!summaryBox.innerHTML.includes('로컬 LLM')) return;
+                        // 이미 요약 내용이 있으면 다시 요청하지 않음 (로딩 스피너 HTML이 아니면)
+                        if (summaryBox.innerHTML.includes('<strong>[AI 3줄 요약]</strong>') || 
+                            summaryBox.innerHTML.includes('아직 국회 데이터베이스에')) return;
 
-                        // 3. 백엔드(views.py의 summarize_bill_api)로 요약 요청 보내기
+                        // 🔥 요약 중일 때 보여줄 로딩 스피너 애니메이션
+                        summaryBox.innerHTML = `
+                            <div class="loading-container">
+                                <div class="spinner"></div>
+                                <span>🤖 로컬 LLM이 원문을 읽고 요약 중입니다... (약 10초 소요)</span>
+                            </div>
+                        `;
+
+                        // 백엔드에 요약 요청
                         fetch('/api/summarize/', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ bill_id: bill.id })                        })
+                            body: JSON.stringify({ bill_id: bill.id })
+                        })
                         .then(res => res.json())
                         .then(summaryData => {
                             if (summaryData.error) {
                                 summaryBox.innerHTML = `<span style="color:red;">요약 실패: ${summaryData.error}</span>`;
                             } else {
-                                // 요약 결과를 화면에 줄바꿈 유지하여 표시
+                                // 요약 완료 시 결과 표시
                                 summaryBox.innerHTML = '<strong>[AI 3줄 요약]</strong><br>' + summaryData.summary.replace(/\n/g, '<br>');
                             }
                         })
@@ -109,11 +169,15 @@
 
                     billListDiv.appendChild(card);
                 });
+                
+                isLoading = false;
             })
             .catch(error => {
-                document.getElementById('bill-list').innerHTML = `<p style="color:red;">목록을 불러오지 못했습니다.</p>`;
+                bottomLoader.style.display = 'none';
+                isLoading = false;
+                hasMoreBills = false;
             });
-    });
+    }
 </script>
 
 </body>

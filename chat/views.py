@@ -11,8 +11,6 @@ import os
 
 load_dotenv()
 
-assembly_api_key = os.getenv("ASSEMBLY_API_KEY")
-
 # ==========================================
 # 1. 일반 AI 챗봇 화면 및 통신 API
 # ==========================================
@@ -43,7 +41,7 @@ def chat_api(request):
             
     return JsonResponse({'error': 'POST 요청만 지원합니다.'}, status=405)
 
-#
+
 # ==========================================
 # 2. 국회 법안 조회 화면 및 통신 API
 # ==========================================
@@ -51,23 +49,24 @@ def bill_list_page(request):
     return render(request, 'chat/bills.html')
 
 def fetch_recent_bills(request):
-    # 수정: .env에서 불러온 api_key를 사용하도록 변경 (없으면 기존 하드코딩 키 사용)
     api_key = os.getenv("ASSEMBLY_API_KEY", "7ebbc9b78224446d89af859b2117e88e") 
-    url = f'https://open.assembly.go.kr/portal/openapi/nzmimeepazxkubdpn?KEY={api_key}&Type=json&pIndex=1&pSize=10&AGE=22'    
+    
+    # 🔥 프론트엔드에서 보낸 page 번호를 받습니다. (기본값 1)
+    page = request.GET.get('page', '1')
+    
+    # 🔥 pIndex={page} 로 변경하여 요청한 페이지의 데이터를 가져오도록 수정했습니다.
+    url = f'https://open.assembly.go.kr/portal/openapi/nzmimeepazxkubdpn?KEY={api_key}&Type=json&pIndex={page}&pSize=10&AGE=22'    
+    
     try:
         response = requests.get(url)
         response.raise_for_status()
         data = response.json()
         
-        # 디버깅용: 터미널에 국회 API 응답값을 출력해봅니다. (에러 원인 파악용)
-        print("=== 국회 API 응답 데이터 ===")
-        print(data) 
-        
         bill_data = data.get('nzmimeepazxkubdpn', [])
         if len(bill_data) > 1 and 'row' in bill_data[1]:
             raw_bills = bill_data[1]['row']
         else:
-            raw_bills = [] # 여기서 빈 배열이 처리되면서 화면에 안 떴을 확률이 높습니다.
+            raw_bills = []
 
         processed_bills = []
         for bill in raw_bills:
@@ -76,7 +75,6 @@ def fetch_recent_bills(request):
                 'title': bill.get('BILL_NAME', '제목 없음'),
                 'proposer': bill.get('PROPOSER', '발의자 정보 없음'),
                 'date': bill.get('PROPOSE_DT', ''),
-                'content': bill.get('PUBL_PROPOSER', '상세 제안 이유가 제공되지 않은 법안입니다.'),
                 'detail_link': bill.get('DETAIL_LINK', '')
             })
             
@@ -84,12 +82,7 @@ def fetch_recent_bills(request):
 
     except requests.exceptions.RequestException as e:
         return JsonResponse({'error': f'API 호출 중 오류 발생: {str(e)}'}, status=500)
-
-
-# ==========================================
-# 3. 상세 법안 AI 3줄 요약 API
-# ==========================================
-@csrf_exempt
+        
 # ==========================================
 # 3. 상세 법안 제안이유 조회 및 AI 3줄 요약 API
 # ==========================================
@@ -108,13 +101,8 @@ def summarize_bill_api(request):
             # [1단계] 국회 '법률안 제안이유 및 주요내용' API 호출
             # ---------------------------------------------------------
             api_key = os.getenv("ASSEMBLY_API_KEY", "7ebbc9b78224446d89af859b2117e88e")
+            endpoint = 'BPMBILLSUMMARY'  
             
-            # 🔥 [중요 수정 필요 1] 
-            # 알려주신 API 페이지의 '기본호출 URL' 맨 마지막 영문 이름을 아래에 넣어주세요.
-            # (예: https://open.assembly.go.kr/portal/openapi/abcd123 -> 'abcd123')
-            endpoint = '여기에_API_영문_명칭_입력' 
-            
-            # 의안번호(BILL_NO)로 해당 법안만 콕 집어서 검색합니다.
             detail_url = f'https://open.assembly.go.kr/portal/openapi/{endpoint}?KEY={api_key}&Type=json&pIndex=1&pSize=1&BILL_NO={bill_id}'
             
             detail_response = requests.get(detail_url)
@@ -126,16 +114,9 @@ def summarize_bill_api(request):
             if endpoint in detail_data and 'row' in detail_data[endpoint][1]:
                 row_data = detail_data[endpoint][1]['row'][0]
                 
-                # 🔥 [중요 수정 필요 2] 
-                # API 문서의 '출력결과' 표를 보고 실제 데이터가 담긴 필드명으로 변경하세요.
-                # (보통 'PROPOSE_REASON', 'DETAIL_CN', 'CN' 등의 이름으로 되어 있습니다.)
-                reason = row_data.get('PROPOSER_REASON', '') # 제안이유 필드명 변경 필요
-                main_content = row_data.get('MAIN_CONTENT', '') # 주요내용 필드명 변경 필요
-                
-                # 추출된 텍스트 합치기
-                bill_content = f"제안이유: {reason}\n주요내용: {main_content}".strip()
+                # 🔥 확실하게 터미널에서 확인한 'SUMMARY' 필드로 데이터 추출!
+                bill_content = row_data.get('SUMMARY', '').strip()
 
-            # API는 호출되었으나 아직 국회 측에서 원문을 등록하지 않은 경우
             if not bill_content or len(bill_content) < 15:
                 return JsonResponse({'summary': '아직 국회 데이터베이스에 상세 제안 이유가 등록되지 않은 법안입니다.'}, status=200)
 
