@@ -124,3 +124,4 @@ def summarize_bill_api(request):
             return JsonResponse({'error': f'요약 중 오류 발생: {str(e)}'}, status=500)
             
     return JsonResponse({'error': 'POST 요청만 지원합니다.'}, status=405)
+    # q
