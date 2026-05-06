@@ -1,0 +1,68 @@
+<!-- 모달(팝업창) 영역 수정 -->
+<div class="modal-overlay" id="billModal" onclick="closeModal(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <span class="close-btn" onclick="closeModal(event)">&times;</span>
+        <div class="modal-title" id="modalTitle">법안 제목</div>
+        
+        <!-- AI 요약이 표시될 파란색 박스 영역입니다 -->
+        <div style="background:#f0f7ff; padding:15px; border-radius:8px; margin-bottom:15px;">
+            <h4 style="margin-top:0; color:#1a73e8; display:flex; align-items:center; gap:5px;">
+                ✨ AI 3줄 요약
+            </h4>
+            <div id="modalSummary" style="font-size: 15px; line-height: 1.6; font-weight: 500;">
+                요약을 생성하는 중입니다...
+            </div>
+        </div>
+
+        <h4 style="margin-bottom: 10px; color:#333;">원문 제안 이유</h4>
+        <div class="modal-body" id="modalBody" style="background:#fafafa; padding:15px; border:1px solid #eee; border-radius:8px; font-size:14px;">
+            제안 이유 로딩 중...
+        </div>
+        
+        <div style="margin-top: 20px; text-align:right;">
+            <a id="modalLink" href="#" target="_blank" style="color: #1a73e8; text-decoration: none; font-weight: bold; font-size:14px;">[국회 의안정보시스템 원문 보기 ↗]</a>
+        </div>
+    </div>
+</div>
+
+<!-- 자바스크립트 영역 수정 -->
+<script>
+    // 기존의 fetchBills() 함수는 그대로 둡니다.
+
+    async function openModal(bill) {
+        // 1. 기본 정보 세팅 및 모달 띄우기
+        document.getElementById('modalTitle').innerText = bill.title;
+        document.getElementById('modalBody').innerText = bill.content;
+        document.getElementById('modalLink').href = bill.detail_link;
+        
+        const summaryDiv = document.getElementById('modalSummary');
+        // AI가 요약하는 동안 로딩 메시지를 보여줍니다.
+        summaryDiv.innerHTML = '<span style="color:#888;">AI 비서가 원문을 꼼꼼하게 요약하고 있습니다. 잠시만 기다려주세요♡</span>';
+        
+        document.getElementById('billModal').style.display = 'flex';
+
+        // 2. 장고 백엔드의 요약 API 호출
+        try {
+            const response = await fetch('/api/summarize/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: bill.content })
+            });
+            const data = await response.json();
+
+            // 3. 요약 결과 화면에 출력
+            if (response.ok) {
+                // LLM의 줄바꿈과 포맷을 유지하기 위해 white-space: pre-wrap 적용
+                summaryDiv.innerHTML = `<div style="white-space: pre-wrap; color: #111;">${data.summary}</div>`;
+            } else {
+                summaryDiv.innerHTML = `<span style="color:red;">요약 실패: ${data.error}</span>`;
+            }
+        } catch (error) {
+            summaryDiv.innerHTML = `<span style="color:red;">LLM 서버 통신 오류가 발생했습니다.</span>`;
+        }
+    }
+
+    function closeModal(event) {
+        document.getElementById('billModal').style.display = 'none';
+    }
+</script>
