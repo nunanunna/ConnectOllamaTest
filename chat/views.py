@@ -51,13 +51,11 @@ def chat_api(request):
 def bill_list_page(request):
     return render(request, 'chat/bills.html')
 
+# 상단에 from .models import BillSummaryCache 가 있는지 꼭 확인해주세요!
+
 def fetch_recent_bills(request):
     api_key = os.getenv("ASSEMBLY_API_KEY", "7ebbc9b78224446d89af859b2117e88e") 
-    
-    # 🔥 프론트엔드에서 보낸 page 번호를 받습니다. (기본값 1)
     page = request.GET.get('page', '1')
-    
-    # 🔥 pIndex={page} 로 변경하여 요청한 페이지의 데이터를 가져오도록 수정했습니다.
     url = f'https://open.assembly.go.kr/portal/openapi/nzmimeepazxkubdpn?KEY={api_key}&Type=json&pIndex={page}&pSize=10&AGE=22'    
     
     try:
@@ -71,14 +69,29 @@ def fetch_recent_bills(request):
         else:
             raw_bills = []
 
+        # 🔥 1. 현재 불러온 법안들의 의안번호(BILL_NO)만 리스트로 모읍니다.
+        bill_ids = [bill.get('BILL_NO') for bill in raw_bills]
+        
+        # 🔥 2. 모은 의안번호들로 DB를 한 번만 검색해서 캐싱된 태그들을 가져옵니다.
+        cached_bills = BillSummaryCache.objects.filter(bill_id__in=bill_ids)
+        cache_dict = {cb.bill_id: {'tag1': cb.tag1, 'tag2': cb.tag2} for cb in cached_bills}
+
         processed_bills = []
         for bill in raw_bills:
+            b_id = bill.get('BILL_NO', '')
+            
+            # 🔥 3. DB에 태그가 있으면 가져오고, 없으면 빈 문자열을 넣습니다.
+            tag1 = cache_dict.get(b_id, {}).get('tag1', '')
+            tag2 = cache_dict.get(b_id, {}).get('tag2', '')
+
             processed_bills.append({
-                'id': bill.get('BILL_NO', ''),
+                'id': b_id,
                 'title': bill.get('BILL_NAME', '제목 없음'),
                 'proposer': bill.get('PROPOSER', '발의자 정보 없음'),
                 'date': bill.get('PROPOSE_DT', ''),
-                'detail_link': bill.get('DETAIL_LINK', '')
+                'detail_link': bill.get('DETAIL_LINK', ''),
+                'tag1': tag1, # 프론트엔드로 태그 전달
+                'tag2': tag2  # 프론트엔드로 태그 전달
             })
             
         return JsonResponse({'bills': processed_bills}, status=200)
@@ -112,7 +125,7 @@ def summarize_bill_api(request):
                     'summary': f"{cached_data.tag1} {cached_data.tag2}\n\n{cached_data.summary_text}"
                 }, status=200)
 
-            # ---------------------------------------------------------
+           # ---------------------------------------------------------
             # [DB에 없을 경우] 기존처럼 국회 API 원문 호출
             # ---------------------------------------------------------
             api_key = os.getenv("ASSEMBLY_API_KEY", "7ebbc9b78224446d89af859b2117e88e")
@@ -124,8 +137,13 @@ def summarize_bill_api(request):
             
             bill_content = ""
             if endpoint in detail_data and 'row' in detail_data[endpoint][1]:
-                bill_content = detail_data[endpoint][1]['row'][0].get('SUMMARY', '').strip()
+                # 1. 먼저 값을 가져옵니다.
+                raw_summary = detail_data[endpoint][1]['row'][0].get('SUMMARY')
+                
+                # 2. 값이 None이 아닐 때만 strip()을 실행하고, None이면 빈 문자열을 넣습니다.
+                bill_content = raw_summary.strip() if raw_summary else ""
 
+            # 이제 bill_content가 빈 문자열이면 아래 조건문에서 정상적으로 걸러집니다.
             if len(bill_content) < 15:
                 return JsonResponse({'summary': '아직 국회 데이터베이스에 상세 제안 이유가 등록되지 않은 법안입니다.'}, status=200)
 

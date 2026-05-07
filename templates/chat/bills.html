@@ -81,7 +81,7 @@
 </div>
 
 <script>
-    let currentPage = 1;
+let currentPage = 1;
     let isLoading = false;
     let hasMoreBills = true;
 
@@ -122,11 +122,15 @@
                     const card = document.createElement('div');
                     card.className = 'bill-card';
                     
-                    // 🔥 제목 영역에 태그가 들어갈 span 태그(title-tags-...) 추가
+                    // 🌟 백엔드에서 미리 태그를 보내주었다면, 여기서 바로 HTML을 만들어 둡니다.
+                    let initialTags = '';
+                    if (bill.tag1 && bill.tag1 !== '#분류없음') initialTags += `<span class="title-tag">${bill.tag1}</span>`;
+                    if (bill.tag2 && bill.tag2 !== '#분류없음') initialTags += `<span class="title-tag">${bill.tag2}</span>`;
+
                     card.innerHTML = `
                         <div class="bill-title">
                             ${bill.title} 
-                            <span id="title-tags-${uniqueId}"></span>
+                            <span id="title-tags-${uniqueId}">${initialTags}</span>
                         </div>
                         <div class="bill-info">발의자: ${bill.proposer} | 발의일: ${bill.date}</div>
                         
@@ -164,26 +168,33 @@
                         .then(async response => {
                             const contentType = response.headers.get('content-type');
                             
-                            // 1️⃣ DB 캐싱 결과일 경우
+                            // 1️⃣ DB 캐싱 결과이거나 서버 에러일 경우
                             if (contentType && contentType.includes('application/json')) {
                                 const data = await response.json();
+                                
+                                // 🔥 [추가된 부분] 에러가 넘어왔다면 undefined 대신 빨간 글씨로 에러 내용을 표시합니다.
+                                if (data.error) {
+                                    summaryBox.innerHTML = `<span style="color:red; font-weight:bold;">안내: ${data.error}</span>`;
+                                    return;
+                                }
+
                                 if (data.cached) {
-                                    // ⚡ 제목 옆에 미니 태그 추가
+                                    // 클릭해서 캐시를 불러왔을 때 혹시 태그가 없었으면 갱신해줍니다.
                                     let tTags = '';
                                     if(data.tag1 && data.tag1 !== '#분류없음') tTags += `<span class="title-tag">${data.tag1}</span>`;
                                     if(data.tag2 && data.tag2 !== '#분류없음') tTags += `<span class="title-tag">${data.tag2}</span>`;
                                     titleTagsSpan.innerHTML = tTags;
 
-                                    // ⚡ 본문 태그 버그 수정 (줄바꿈 변경 전에 한글/영문/숫자만 매칭)
                                     let formattedSummary = data.summary.replace(/(#[가-힣a-zA-Z0-9_]+)/g, '<span class="tag">$1</span>');
                                     formattedSummary = formattedSummary.replace(/\n/g, '<br>');
                                     summaryBox.innerHTML = '<strong>[⚡ DB 저장본: 즉시 불러옴]</strong><br><br>' + formattedSummary;
                                 } else {
-                                    summaryBox.innerHTML = data.summary;
+                                    // "아직 등록되지 않은 법안입니다" 같은 정상적인 summary 메시지 출력
+                                    summaryBox.innerHTML = `<span style="color:#7f8c8d;">${data.summary}</span>`;
                                 }
                                 return;
                             }
-
+                            
                             // 2️⃣ 처음 생성하는 경우 (스트리밍)
                             summaryBox.innerHTML = '<strong>[🤖 실시간 AI 분석 중...]</strong><br><br><div id="stream-content-${uniqueId}"></div>';
                             const streamContent = document.getElementById(`stream-content-${uniqueId}`);
@@ -203,14 +214,13 @@
                                         const dataStr = line.replace('data: ', '').trim();
                                         
                                         if (dataStr === '[DONE]') {
-                                            // ⚡ 스트리밍 끝난 후 태그 추출해서 제목 옆에 추가
+                                            // 스트리밍 완료 후 태그 갱신
                                             const tags = fullText.match(/(#[가-힣a-zA-Z0-9_]+)/g) || [];
                                             let tTags = '';
                                             if(tags[0]) tTags += `<span class="title-tag">${tags[0]}</span>`;
                                             if(tags[1]) tTags += `<span class="title-tag">${tags[1]}</span>`;
                                             titleTagsSpan.innerHTML = tTags;
 
-                                            // ⚡ 본문 태그 버그 수정
                                             let finalFormatted = fullText.replace(/(#[가-힣a-zA-Z0-9_]+)/g, '<span class="tag">$1</span>');
                                             finalFormatted = finalFormatted.replace(/\n/g, '<br>');
                                             summaryBox.innerHTML = '<strong>[✅ AI 분석 완료 (DB 저장됨)]</strong><br><br>' + finalFormatted;
